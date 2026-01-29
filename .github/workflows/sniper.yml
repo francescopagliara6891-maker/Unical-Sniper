@@ -1,0 +1,30 @@
+name: Unical Sniper Check
+
+on:
+  schedule:
+    # Esegue ogni 30 minuti
+    - cron: '*/30 * * * *'
+  workflow_dispatch: # Permette di lanciarlo a mano per testarlo
+
+jobs:
+  check_unical:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout del codice
+      uses: actions/checkout@v3
+
+    - name: Imposta Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Installa dipendenze
+      run: |
+        pip install -r requirements.txt
+
+    - name: Esegui Unical Sniper
+      env:
+        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: python main.py
