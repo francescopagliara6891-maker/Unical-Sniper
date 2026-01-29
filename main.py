@@ -12,17 +12,38 @@ TARGETS = [
     {"nome": "Unical - Offerta Formativa", "url": "https://www.unical.it/didattica/offerta-formativa/master/"}
 ]
 
-# --- CONFIGURAZIONE CECCHINO (Precisione Chirurgica) ---
-# Cerchiamo la frase specifica del tuo Master
-TARGET_NAME_KEYWORDS = ["artificial intelligence", "data science"] 
+# --- CONFIGURAZIONE PAROLE CHIAVE (User Defined) ---
 
-# Cerchiamo parole che indicano un'apertura REALE (no archivi vecchi)
-ACTION_KEYWORDS = ["bando", "ammissione", "selezione", "apertura", "domanda"]
+# 1. NOME DEL MASTER (Basta trovarne UNO)
+# Copre sia il nome lungo ufficiale, sia gli acronimi, sia le varianti comuni
+NAME_VARIANTS = [
+    "ai&ds", 
+    "ai & ds", 
+    "master universitario di ii livello in artificial intelligence & data science",
+    "artificial intelligence & data science", # Variante senza "Master..." per sicurezza
+    "artificial intelligence and data science" # Variante con "and"
+]
 
-# Filtro Temporale (Fondamentale)
-YEAR_KEYWORDS = ["2026", "2027"]
+# 2. EDIZIONE (Basta trovarne UNO)
+EDITION_VARIANTS = [
+    "quarta", 
+    "4", 
+    "iv"
+]
 
-HEADERS = {'User-Agent': 'Mozilla/5.0 (GitHub Action Unical Sniper) Gecko/20100101 Firefox/88.0'}
+# 3. ANNO ACCADEMICO (Basta trovarne UNO)
+YEAR_VARIANTS = [
+    "2026/2027", 
+    "2026-2027", 
+    "2026 2027"
+]
+
+# 4. BONUS TRIGGER (Se trova questo associato al master, vince subito)
+SPECIAL_KEYWORDS = [
+    "patti territoriali"
+]
+
+HEADERS = {'User-Agent': 'Mozilla/5.0 (GitHub Action Unical Sniper Elite) Gecko/20100101 Firefox/88.0'}
 
 def send_telegram_alert(message):
     token = os.environ.get("TELEGRAM_TOKEN")
@@ -42,7 +63,7 @@ def send_telegram_alert(message):
 
 def check_targets():
     found_something = False
-    print("--- INIZIO SCANSIONE CHIRURGICA ---")
+    print("--- INIZIO SCANSIONE ELITE (V5) ---")
     
     for target in TARGETS:
         print(f"Analisi: {target['nome']}...")
@@ -54,76 +75,55 @@ def check_targets():
                 
             soup = BeautifulSoup(response.text, 'html.parser')
             
-            # --- STRATEGIA 1: Cerca nei LINK (<a> tags) ---
-            # Questo serve per trovare direttamente il PDF o la pagina di dettaglio
+            # --- SCANSIONE LINK ---
             all_links = soup.find_all('a', href=True)
             
             for link in all_links:
-                link_text = link.get_text().lower()
-                link_url = link['href']
-                
-                # Uniamo testo del link e URL per la ricerca (a volte "bando" è nel nome del file pdf)
-                full_search_string = (link_text + " " + link_url).lower()
+                # Normalizziamo tutto in minuscolo per il confronto
+                link_text = link.get_text().lower().strip()
+                link_url = link['href'].lower()
+                full_string = link_text + " " + link_url 
 
-                # VERIFICA 1: Ci sono le parole chiave del Master? (AI + Data Science)
-                has_target_name = all(k in full_search_string for k in TARGET_NAME_KEYWORDS)
+                # --- LOGICA DI ABBINAMENTO ---
                 
-                # VERIFICA 2: C'è l'anno giusto?
-                has_year = any(y in full_search_string for y in YEAR_KEYWORDS)
+                # Check 1: È il master giusto?
+                has_name = any(k in full_string for k in NAME_VARIANTS)
                 
-                # VERIFICA 3: C'è la parola "bando" o simili?
-                has_action = any(a in full_search_string for a in ACTION_KEYWORDS)
+                # Check 2: È l'edizione/anno giusto?
+                has_edition = any(k in full_string for k in EDITION_VARIANTS)
+                has_year = any(k in full_string for k in YEAR_VARIANTS)
+                has_special = any(k in full_string for k in SPECIAL_KEYWORDS)
 
-                # Se il link soddisfa i criteri, abbiamo fatto centro
-                if has_target_name and (has_year or has_action):
+                # CONDIZIONE DI ALLARME:
+                # Deve esserci il NOME + (Edizione OPPURE Anno OPPURE Patti Territoriali)
+                if has_name and (has_edition or has_year or has_special):
                     
-                    # Costruisci URL assoluto se è relativo
-                    if link_url.startswith("/"):
-                        if "unical.it" in target['url']:
-                            base_domain = "https://www.unical.it"
-                        elif "demacs" in target['url']:
-                            base_domain = "https://demacs.unical.it"
-                        else:
-                            base_domain = target['url'] # Fallback
-                        final_link = base_domain + link_url
-                    elif not link_url.startswith("http"):
-                        final_link = target['url'] + link_url
+                    # Ricostruzione Link
+                    original_url = link['href']
+                    if original_url.startswith("/"):
+                        base = "https://demacs.unical.it" if "demacs" in target['url'] else "https://www.unical.it"
+                        final_link = base + original_url
+                    elif not original_url.startswith("http"):
+                        final_link = target['url'] + original_url
                     else:
-                        final_link = link_url
+                        final_link = original_url
 
-                    msg = (f"🎯 **BERSAGLIO COLPITO!**\n\n"
-                           f"Ho trovato un link specifico per il Master AI & DS!\n"
-                           f"📄 *Testo trovato:* {link_text.strip()}\n"
-                           f"🔗 [CLICCA QUI PER APRIRE]({final_link})\n"
+                    msg = (f"🎯 **BERSAGLIOCENTRATO!**\n\n"
+                           f"Trovato bando compatibile!\n"
+                           f"📄 *Testo:* {link_text}\n"
+                           f"🔗 [CLICCA QUI]({final_link})\n"
                            f"Fonte: {target['nome']}")
                     
                     send_telegram_alert(msg)
                     found_something = True
-                    print(f"!!! TROVATO LINK SPECIFICO: {final_link}")
-                    break # Passa al prossimo sito per non spammare lo stesso link 10 volte
-
-            # --- STRATEGIA 2: Controlla il testo circostante (Se non c'è link diretto) ---
-            if not found_something:
-                # Cerca blocchi di testo che contengono tutto insieme
-                page_text = soup.get_text().lower()
-                if all(k in page_text for k in TARGET_NAME_KEYWORDS) and \
-                   any(y in page_text for y in YEAR_KEYWORDS) and \
-                   any(a in page_text for a in ACTION_KEYWORDS):
-                       
-                       # Se siamo qui, il master c'è ma il link diretto è difficile da estrarre.
-                       # Mandiamo comunque l'alert ma specificando che è generico.
-                       msg = (f"⚠️ **ATTENZIONE (Check Testuale)**\n\n"
-                              f"Ho rilevato 'AI & Data Science' + '2026/27' nel testo di: *{target['nome']}*\n"
-                              f"Non ho trovato un link diretto al PDF, controlla la pagina.\n"
-                              f"🔗 [Vai alla pagina]({target['url']})")
-                       send_telegram_alert(msg)
-                       found_something = True
+                    print(f"!!! TROVATO: {final_link}")
+                    break 
 
         except Exception as e:
             print(f"Errore tecnico su {target['nome']}: {e}")
 
     if not found_something:
-        print("Nessun target specifico rilevato.")
+        print("Nessun target rilevato. Continuo a monitorare.")
 
 if __name__ == "__main__":
     check_targets()
